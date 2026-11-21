@@ -49,6 +49,8 @@ evosim/
   population.py    ciclo de vida Wright-Fisher
   ecology.py       paisaje, regulación por densidad, apareamiento local, dispersión
   stats.py         estadísticos: H, π, LD, H-W, F_ST (Nei y Hudson), dN/dS
+  recorder.py      graba corridas ecológicas en JSON para el visor
+viewer/            visor web (index.html), grabaciones (data/) y empaquetador (build.py)
 tests/             pruebas unitarias (pytest)
 validation/        experimentos que comparan la simulación con la teoría
 examples/          demos de fenómenos emergentes (salida en examples/output/)
@@ -100,6 +102,19 @@ Resultados en `validation/RESULTS.md` y figuras en `validation/figures/`.
 python3 examples/range_expansion.py --gif     # expansión de rango sobre un gradiente térmico
 python3 examples/climate_change.py            # calentamiento a distintas velocidades
 ```
+
+## Visor interactivo
+
+Reproduce una corrida grabada como un video: mapa del paisaje (densidad, desajuste,
+temperatura), clina, genes que se rompen y series de tiempo sincronizadas.
+
+```bash
+python3 examples/record_run.py gradient    # graba viewer/data/gradient.json (~6 min)
+python3 examples/record_run.py climate     # graba viewer/data/climate.json (~3 min)
+python3 viewer/build.py                    # empaqueta todo en viewer/dist/visor.html
+```
+
+`viewer/dist/visor.html` se abre directamente en el navegador, sin servidor.
 
 Fenómenos que emergen sin estar programados:
 

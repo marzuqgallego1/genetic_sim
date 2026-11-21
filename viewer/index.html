@@ -1,0 +1,752 @@
+<title>Visor evosim</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: banco de laboratorio. Controles de reproducción arriba; a la izquierda el paisaje,
+   la clina y los genes; a la derecha las series de tiempo sincronizadas con el cursor. */
+:root {
+  --bg: #f5f6f3;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #7d7b75;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --accent: #2a78d6;
+  --accent-ink: #ffffff;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --seq-lo: #e6effa; --seq-mid: #3987e5; --seq-hi: #0d366b;
+  --mis-lo: #fbeee7; --mis-mid: #eb6834; --mis-hi: #8a3412;
+  --cold: #2a78d6; --neutral: #f0efec; --warm: #e34948;
+  --band: rgba(27, 175, 122, 0.14);
+  --critical: #d03b3b;
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f100f; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #8f8d86;
+    --grid: #2c2c2a; --axis: #3d3d3a; --border: rgba(255, 255, 255, 0.10);
+    --accent: #3987e5; --accent-ink: #ffffff;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --seq-lo: #1f2731; --seq-mid: #2a78d6; --seq-hi: #b7d3f6;
+    --mis-lo: #2a201b; --mis-mid: #d95926; --mis-hi: #f3ab8a;
+    --cold: #3987e5; --neutral: #383835; --warm: #e66767;
+    --band: rgba(25, 158, 112, 0.20);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f100f; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #8f8d86;
+  --grid: #2c2c2a; --axis: #3d3d3a; --border: rgba(255, 255, 255, 0.10);
+  --accent: #3987e5; --accent-ink: #ffffff;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --seq-lo: #1f2731; --seq-mid: #2a78d6; --seq-hi: #b7d3f6;
+  --mis-lo: #2a201b; --mis-mid: #d95926; --mis-hi: #f3ab8a;
+  --cold: #3987e5; --neutral: #383835; --warm: #e66767;
+  --band: rgba(25, 158, 112, 0.20);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 14px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.app { max-width: 1280px; margin: 0 auto; display: grid; gap: 16px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; font-weight: 600; }
+h1 { font-size: 22px; letter-spacing: -0.01em; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-2); }
+p { margin: 0; }
+button, select, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.top { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: end; justify-content: space-between; }
+.brand { display: grid; gap: 4px; min-width: 0; max-width: 72ch; }
+.brand .sub { color: var(--ink-2); }
+.tabs { display: flex; gap: 4px; padding: 3px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.tabs button { border: 0; background: transparent; padding: 6px 12px; border-radius: 6px; cursor: pointer; color: var(--ink-2); }
+.tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+
+.transport {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 10px 14px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.play {
+  display: inline-flex; align-items: center; gap: 8px; border: 0; background: var(--accent); color: var(--accent-ink);
+  padding: 7px 14px; border-radius: 7px; cursor: pointer; font-weight: 500; min-width: 116px; justify-content: center;
+}
+.play svg { width: 12px; height: 12px; fill: currentColor; }
+.step { border: 1px solid var(--border); background: transparent; border-radius: 7px; padding: 6px 10px; cursor: pointer; }
+.scrub { flex: 1 1 240px; min-width: 0; accent-color: var(--accent); }
+.readout { display: flex; align-items: baseline; gap: 8px; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.readout span { color: var(--muted); font-family: var(--font-ui); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+.readout b { font-size: 18px; font-weight: 500; min-width: 4.5ch; text-align: right; }
+.speed { display: flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 13px; }
+.speed select { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; display: grid; gap: 2px; min-width: 0; }
+.tile .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+.tile .v { font-family: var(--font-data); font-size: 22px; font-weight: 500; }
+.tile .d { color: var(--ink-2); font-size: 12px; }
+.tile.alert .v { color: var(--critical); }
+
+.grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.col { display: grid; gap: 16px; min-width: 0; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px 16px; display: grid; gap: 10px; min-width: 0; }
+.panel-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
+.panel .hint { color: var(--ink-2); font-size: 13px; max-width: 70ch; }
+
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.seg button { border: 0; background: transparent; padding: 4px 10px; cursor: pointer; color: var(--ink-2); font-size: 13px; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+
+canvas#map { width: 100%; display: block; border-radius: 4px; cursor: crosshair; }
+.scale { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-2); flex-wrap: wrap; }
+.scale .bar { height: 10px; width: 180px; max-width: 50vw; border-radius: 3px; border: 1px solid var(--border); }
+.scale span { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+
+svg { display: block; width: 100%; overflow: visible; }
+svg text { fill: var(--muted); font-family: var(--font-data); font-size: 10.5px; }
+svg .lbl { fill: var(--ink-2); font-family: var(--font-ui); font-size: 11.5px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--ink-2); }
+.legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+.legend i.dash { background: repeating-linear-gradient(90deg, var(--ink-2) 0 4px, transparent 4px 7px) !important; }
+.legend i.dot { width: 9px; height: 9px; border-radius: 50%; }
+.legend i.area { height: 10px; border-radius: 2px; }
+
+.series { display: grid; gap: 2px; }
+.series-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.series-head .name { font-size: 13px; color: var(--ink); }
+.series-head .val { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink-2); }
+.series svg { cursor: pointer; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 500; color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; padding: 4px 8px 6px 0; border-bottom: 1px solid var(--grid); }
+td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--grid); vertical-align: middle; }
+td.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; text-align: right; }
+th.num { text-align: right; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 8px; vertical-align: -1px; }
+.table-wrap { overflow-x: auto; }
+
+.moments { display: grid; gap: 8px; }
+.moment { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; align-items: start; padding: 10px 0; border-top: 1px solid var(--grid); }
+.moment:first-child { border-top: 0; padding-top: 0; }
+.moment button { border: 1px solid var(--border); background: transparent; border-radius: 6px; padding: 3px 8px; cursor: pointer; font-family: var(--font-data); font-size: 12px; white-space: nowrap; }
+.moment button:hover { border-color: var(--accent); color: var(--accent); }
+.moment p { color: var(--ink-2); font-size: 13px; }
+.moment b { color: var(--ink); font-weight: 600; }
+
+dl.facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 13px; }
+dl.facts dt { color: var(--muted); }
+dl.facts dd { margin: 0; font-family: var(--font-data); font-variant-numeric: tabular-nums; text-align: right; }
+
+#tip {
+  position: fixed; pointer-events: none; z-index: 20; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; font-size: 12px; line-height: 1.4;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12); max-width: 240px;
+}
+#tip .t { color: var(--muted); font-size: 11px; }
+#tip .n { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.loading { color: var(--ink-2); padding: 40px 0; text-align: center; }
+
+@media (max-width: 920px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 520px) {
+  .readout b { font-size: 16px; }
+  .play { min-width: 0; }
+  .tile .v { font-size: 19px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <h1 id="title">Visor evosim</h1>
+      <p class="sub" id="desc">Cargando la corrida…</p>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Escenario">
+      <button role="tab" id="tab-gradient" data-scen="gradient" aria-selected="true">Gradiente térmico</button>
+      <button role="tab" id="tab-climate" data-scen="climate" aria-selected="false">Calentamiento</button>
+    </nav>
+  </header>
+
+  <section class="transport" aria-label="Reproducción">
+    <button class="play" id="play" aria-label="Reproducir">
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path id="playIcon" d="M2 1l9 5-9 5z"/></svg><span id="playLabel">Reproducir</span>
+    </button>
+    <button class="step" id="prev" aria-label="Cuadro anterior">‹</button>
+    <button class="step" id="next" aria-label="Cuadro siguiente">›</button>
+    <input class="scrub" id="scrub" type="range" min="0" max="0" value="0" aria-label="Línea de tiempo">
+    <div class="readout"><span>Generación</span><b id="gen">0</b></div>
+    <label class="speed" for="speed">Velocidad
+      <select id="speed">
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="2">2×</option>
+        <option value="4">4×</option>
+      </select>
+    </label>
+  </section>
+
+  <section class="tiles" id="tiles" aria-live="off"></section>
+
+  <main class="grid">
+    <div class="col">
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Paisaje</h2>
+          <div class="seg" id="layers" role="group" aria-label="Capa del mapa">
+            <button id="layer-density" data-layer="density" aria-pressed="true">Densidad</button>
+            <button id="layer-mismatch" data-layer="mismatch" aria-pressed="false">Desajuste</button>
+            <button id="layer-temp" data-layer="temp" aria-pressed="false">Temperatura</button>
+          </div>
+        </div>
+        <canvas id="map" role="img" aria-label="Mapa del paisaje"></canvas>
+        <div class="scale" id="mapScale"></div>
+        <p class="hint" id="mapHint"></p>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head"><h2>Clina: tolerancia frente a temperatura</h2></div>
+        <svg id="cline" role="img" aria-label="Tolerancia media por columna frente al óptimo local"></svg>
+        <div class="legend">
+          <span><i class="dot" style="background: var(--s1)"></i>Tolerancia genética media de la columna</span>
+          <span><i class="dash"></i>Óptimo local (temperatura)</span>
+          <span><i class="area" style="background: var(--band)"></i>Zona donde una población dispersa puede crecer</span>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head"><h2>Genes de tolerancia</h2></div>
+        <p class="hint">Fracción de copias de cada gen que están rotas (alelo nulo por codón de paro o daño severo). Romper un gen con peso negativo <b>sube</b> la tolerancia al calor.</p>
+        <svg id="genes" role="img" aria-label="Fracción de copias rotas por gen a lo largo del tiempo"></svg>
+        <div class="legend" id="geneLegend"></div>
+        <div class="table-wrap"><table id="geneTable"></table></div>
+      </article>
+    </div>
+
+    <div class="col">
+      <article class="panel">
+        <div class="panel-head"><h2>Momentos clave</h2></div>
+        <div class="moments" id="moments"></div>
+      </article>
+      <article class="panel">
+        <div class="panel-head"><h2>A lo largo del tiempo</h2></div>
+        <p class="hint">Haz clic en cualquier gráfica para saltar a esa generación.</p>
+        <div id="series" style="display:grid; gap:14px"></div>
+      </article>
+      <article class="panel">
+        <div class="panel-head"><h2>Configuración de la corrida</h2></div>
+        <dl class="facts" id="facts"></dl>
+      </article>
+    </div>
+  </main>
+</div>
+<div id="tip" hidden></div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const NS = "http://www.w3.org/2000/svg";
+  const fmt = (v, d = 2) => (v == null || Number.isNaN(v) ? "—" : Number(v).toLocaleString("es", { minimumFractionDigits: d, maximumFractionDigits: d }));
+  const fmtInt = (v) => (v == null ? "—" : Math.round(v).toLocaleString("es"));
+  const SCENARIOS = ["gradient", "climate"];
+
+  let D = null, scen = "gradient", frame = 0, playing = false, layer = "density";
+  let derived = null, charts = [];
+  const cache = {};
+
+  // ------------------------------------------------------------ datos
+  async function loadScenario(id) {
+    if (cache[id]) return cache[id];
+    let d = window.EVOSIM_DATA && window.EVOSIM_DATA[id];
+    if (!d) {
+      const r = await fetch(`data/${id}.json`);
+      if (!r.ok) throw new Error(`No se encontró data/${id}.json`);
+      d = await r.json();
+    }
+    cache[id] = d;
+    return d;
+  }
+
+  function derive(d) {
+    const m = d.meta, W = m.width, H = m.height;
+    const thr = m.omega * Math.sqrt(2 * Math.log(m.fecundity));     // desajuste con λ·w = 1
+    const frames = d.frames;
+    const colTrait = [], colDens = [], colEnv = [], meanTrait = [], meanEnv = [];
+    let tmin = Infinity, tmax = -Infinity, emin = Infinity, emax = -Infinity;
+    for (const f of frames) {
+      const ct = new Array(W).fill(0), cn = new Array(W).fill(0), ce = new Array(W).fill(0);
+      let st = 0, sn = 0, se = 0;
+      for (let c = 0; c < W * H; c++) {
+        const x = c % W, n = f.density[c], z = f.trait[c], e = f.env[c];
+        ce[x] += e / H;
+        se += e;
+        if (n > 0 && z != null) { ct[x] += z * n; cn[x] += n; st += z * n; sn += n; }
+        if (e < emin) emin = e; if (e > emax) emax = e;
+      }
+      const row = ct.map((s, x) => (cn[x] > 0 ? s / cn[x] : null));
+      row.forEach((v) => { if (v != null) { tmin = Math.min(tmin, v); tmax = Math.max(tmax, v); } });
+      colTrait.push(row); colDens.push(cn); colEnv.push(ce);
+      meanTrait.push(sn > 0 ? st / sn : null);
+      meanEnv.push(se / (W * H));
+    }
+    const envVariesInSpace = frames.some((f) => Math.max(...f.env) - Math.min(...f.env) > 1e-6);
+    const envVariesInTime = meanEnv.some((v) => Math.abs(v - meanEnv[0]) > 1e-6);
+    const Ktot = m.K.reduce((a, b) => a + b, 0);
+    return { thr, colTrait, colDens, colEnv, meanTrait, meanEnv, tmin, tmax, emin, emax, envVariesInSpace, envVariesInTime, Ktot,
+      gens: frames.map((f) => f.gen) };
+  }
+
+  // ------------------------------------------------------------ color
+  function hex2rgb(h) { h = h.replace("#", ""); if (h.length === 3) h = h.split("").map((c) => c + c).join(""); const n = parseInt(h, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+  function mix(a, b, t) { return a.map((v, i) => Math.round(v + (b[i] - v) * t)); }
+  function ramp3(lo, mid, hi) {
+    const A = hex2rgb(css(lo)), B = hex2rgb(css(mid)), C = hex2rgb(css(hi));
+    return (t) => { t = Math.max(0, Math.min(1, t)); const c = t < 0.5 ? mix(A, B, t * 2) : mix(B, C, (t - 0.5) * 2); return `rgb(${c[0]},${c[1]},${c[2]})`; };
+  }
+
+  // ------------------------------------------------------------ tooltip
+  const tip = $("tip");
+  function showTip(evt, html) {
+    tip.innerHTML = html; tip.hidden = false;
+    const pad = 14, r = tip.getBoundingClientRect();
+    let x = evt.clientX + pad, y = evt.clientY + pad;
+    if (x + r.width > window.innerWidth - 8) x = evt.clientX - r.width - pad;
+    if (y + r.height > window.innerHeight - 8) y = evt.clientY - r.height - pad;
+    tip.style.left = `${Math.max(8, x)}px`; tip.style.top = `${Math.max(8, y)}px`;
+  }
+  const hideTip = () => { tip.hidden = true; };
+
+  // ------------------------------------------------------------ svg helpers
+  function el(tag, attrs, parent) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function niceTicks(a, b, n) {
+    if (!(b > a)) return [a];
+    const step0 = (b - a) / n, mag = Math.pow(10, Math.floor(Math.log10(step0))), r = step0 / mag;
+    const step = (r < 1.5 ? 1 : r < 3 ? 2 : r < 7 ? 5 : 10) * mag;
+    const out = [];
+    for (let v = Math.ceil(a / step) * step; v <= b + 1e-9; v += step) out.push(+v.toFixed(10));
+    return out;
+  }
+  function pathFor(xs, ys, sx, sy) {
+    let d = "", pen = false;
+    for (let i = 0; i < xs.length; i++) {
+      const y = ys[i];
+      if (y == null || Number.isNaN(y)) { pen = false; continue; }
+      d += `${pen ? "L" : "M"}${sx(xs[i]).toFixed(1)},${sy(y).toFixed(1)}`; pen = true;
+    }
+    return d;
+  }
+
+  // Gráfica de líneas con cursor sincronizado, tooltip y clic para saltar.
+  function timeChart(svg, { series, height = 72, yDomain, yFmt = (v) => fmt(v, 2), zeroBase = true }) {
+    const width = Math.max(260, svg.parentNode.clientWidth);
+    svg.innerHTML = "";
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    svg.setAttribute("height", height);
+    const m = { l: 44, r: 10, t: 6, b: 18 };
+    const xs = derived.gens, x0 = xs[0], x1 = xs[xs.length - 1];
+    let lo = Infinity, hi = -Infinity;
+    for (const s of series) for (const v of s.values) if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+    if (yDomain) [lo, hi] = yDomain;
+    if (zeroBase) lo = Math.min(0, lo);
+    if (!(hi > lo)) hi = lo + 1;
+    const sx = (x) => m.l + ((x - x0) / Math.max(1, x1 - x0)) * (width - m.l - m.r);
+    const sy = (y) => height - m.b - ((y - lo) / (hi - lo)) * (height - m.t - m.b);
+    const g = el("g", {}, svg);
+    for (const t of niceTicks(lo, hi, 2)) {
+      el("line", { x1: m.l, x2: width - m.r, y1: sy(t), y2: sy(t), stroke: css("--grid"), "stroke-width": 1 }, g);
+      const tx = el("text", { x: m.l - 6, y: sy(t) + 3.5, "text-anchor": "end" }, g); tx.textContent = yFmt(t);
+    }
+    el("line", { x1: m.l, x2: width - m.r, y1: height - m.b, y2: height - m.b, stroke: css("--axis"), "stroke-width": 1 }, g);
+    for (const t of niceTicks(x0, x1, width < 400 ? 3 : 5)) {
+      const tx = el("text", { x: sx(t), y: height - 4, "text-anchor": "middle" }, g); tx.textContent = fmtInt(t);
+    }
+    if (derived.warm != null) {
+      el("line", { x1: sx(derived.warm), x2: sx(derived.warm), y1: m.t, y2: height - m.b, stroke: css("--axis"), "stroke-dasharray": "3 3" }, g);
+    }
+    for (const s of series) {
+      el("path", { d: pathFor(xs, s.values, sx, sy), fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round",
+        "stroke-linecap": "round", "stroke-dasharray": s.dash ? "5 4" : "none" }, g);
+    }
+    const cur = el("line", { y1: m.t, y2: height - m.b, stroke: css("--ink"), "stroke-width": 1, opacity: 0.55 }, g);
+    const dots = series.map((s) => el("circle", { r: 4, fill: s.color, stroke: css("--surface"), "stroke-width": 2 }, g));
+    const hit = el("rect", { x: m.l, y: 0, width: width - m.l - m.r, height, fill: "transparent" }, svg);
+    const idxAt = (evt) => {
+      const r = svg.getBoundingClientRect();
+      const px = ((evt.clientX - r.left) / r.width) * width;
+      const gen = x0 + ((px - m.l) / (width - m.l - m.r)) * (x1 - x0);
+      let best = 0, bd = Infinity;
+      for (let i = 0; i < xs.length; i++) { const dd = Math.abs(xs[i] - gen); if (dd < bd) { bd = dd; best = i; } }
+      return best;
+    };
+    hit.addEventListener("mousemove", (evt) => {
+      const i = idxAt(evt);
+      const rows = series.map((s) => `<div><span class="sw" style="background:${s.color}"></span>${s.name}: <span class="n">${yFmt(s.values[i])}</span></div>`).join("");
+      showTip(evt, `<div class="t">Generación ${fmtInt(xs[i])}</div>${rows}`);
+    });
+    hit.addEventListener("mouseleave", hideTip);
+    hit.addEventListener("click", (evt) => { setFrame(idxAt(evt)); });
+    return {
+      set(i) {
+        const x = sx(xs[i]);
+        cur.setAttribute("x1", x); cur.setAttribute("x2", x);
+        series.forEach((s, k) => {
+          const v = s.values[i];
+          if (v == null) { dots[k].setAttribute("opacity", 0); return; }
+          dots[k].setAttribute("opacity", 1); dots[k].setAttribute("cx", x); dots[k].setAttribute("cy", sy(v));
+        });
+      },
+    };
+  }
+
+  // ------------------------------------------------------------ construcción por escenario
+  function build() {
+    const m = D.meta;
+    derived = derive(D);
+    derived.warm = m.warming_start ?? null;
+    $("title").textContent = m.title;
+    $("desc").textContent = m.description;
+    const sc = $("scrub");
+    sc.max = D.frames.length - 1;
+    buildFacts();
+    buildMoments();
+    buildSeries();
+    buildGenes();
+    layoutMap();
+  }
+
+  function buildFacts() {
+    const m = D.meta;
+    const rows = [
+      ["Paisaje", `${m.width} × ${m.height} celdas`],
+      ["Capacidad por celda (K)", fmtInt(m.K[0])],
+      ["Fecundidad máxima (λ)", fmt(m.fecundity, 1)],
+      ["Amplitud de nicho (ω)", fmt(m.omega, 2)],
+      ["Migración por generación", `${fmt(m.migration_rate * 100, 0)} %`],
+      ["Genoma", `${fmtInt(m.genome_length)} pb · ${m.n_chrom} cromosomas`],
+      ["Genes", `${m.n_enzyme_genes} enzimas + ${m.trait_genes.length} de tolerancia`],
+      ["Tasa de mutación", `${m.mutation_rate.toExponential(0)} por sitio y generación`],
+    ];
+    if (m.warming_rate != null) rows.push(["Calentamiento", `+${m.warming_rate} por generación desde la gen ${m.warming_start}`]);
+    $("facts").innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+  }
+
+  function frameAtGen(g) {
+    const gens = derived.gens; let best = 0;
+    for (let i = 0; i < gens.length; i++) if (Math.abs(gens[i] - g) < Math.abs(gens[best] - g)) best = i;
+    return best;
+  }
+
+  function buildMoments() {
+    const m = D.meta, F = D.frames, W = m.width, out = [];
+    if (m.scenario === "gradient") {
+      const occ = (i, x) => derived.colDens[i][x] / (m.K[x] * m.height) > 0.3;
+      const firstIdx = (pred) => { for (let i = 0; i < F.length; i++) if (pred(i)) return i; return -1; };
+      const cold = firstIdx((i) => occ(i, 0)), hot = firstIdx((i) => occ(i, W - 1));
+      // frente caliente: columna ocupada más a la derecha; buscar su meseta más larga antes de llegar al borde
+      const front = F.map((_, i) => { let r = -1; for (let x = 0; x < W; x++) if (occ(i, x)) r = x; return r; });
+      let bestLen = 0, bestStart = 0, start = 0;
+      const end = hot > 0 ? hot : F.length;
+      for (let i = 1; i < end; i++) { if (front[i] !== front[start]) start = i; if (i - start > bestLen && front[start] < W - 1) { bestLen = i - start; bestStart = start; } }
+      out.push([0, "Fundación", "200 individuos adaptados a temperatura 0 en el centro del paisaje."]);
+      if (cold >= 0) out.push([cold, "Llegan al extremo frío", "Bajar la tolerancia es fácil: basta con romper genes de peso positivo."]);
+      if (bestLen > 3) {
+        const mid = bestStart + Math.floor(bestLen / 2), tz = derived.colTrait[mid][front[mid]];
+        out.push([mid, "Frente caliente detenido", `Durante ${fmtInt(bestLen * m.every)} generaciones la especie no pasa de la temperatura ${fmt(derived.colEnv[mid][front[mid]], 2)} (tolerancia ≈ ${fmt(tz, 2)}). El camino fácil de romper genes ya está agotado.`]);
+      }
+      if (hot >= 0) out.push([hot, "Llegan al extremo caliente", "Acumulando mutaciones raras de ganancia en promotores, por fin cruzan el gradiente."]);
+    } else {
+      const warm = frameAtGen(m.warming_start);
+      out.push([0, "Periodo estable", "Temperatura 0. La población acumula variación genética."]);
+      out.push([warm, "Empieza el calentamiento", `La temperatura sube ${m.warming_rate} por generación. La tolerancia la sigue con un retraso casi constante.`]);
+      const vg = F.map((f) => f.vg ?? null).slice(warm);
+      const med = vg.filter((v) => v != null).sort((a, b) => a - b)[Math.floor(vg.length / 2)] || 0;
+      let col = -1;
+      for (let i = warm + 10; i < F.length; i++) { if (F[i].vg != null && F[i].vg < 0.3 * med && F[i].N > 0) { col = i; break; } }
+      if (col >= 0) out.push([col, "Colapso de la variación", `Los genes que podían romperse ya están rotos: la varianza genética cae y el retraso se dispara.`]);
+      const ext = F.findIndex((f) => f.N === 0);
+      if (ext >= 0) out.push([ext, "Extinción", `Con un desajuste mayor que ${fmt(derived.thr, 2)}, cada individuo deja menos de un hijo.`]);
+      else out.push([F.length - 1, "Final de la corrida", "La población sigue viva."]);
+    }
+    $("moments").innerHTML = out.map(([i, t, d]) =>
+      `<div class="moment"><button data-frame="${i}" aria-label="Ir a la generación ${D.frames[i].gen}">gen ${fmtInt(D.frames[i].gen)}</button><p><b>${t}.</b> ${d}</p></div>`).join("");
+    $("moments").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { pause(); setFrame(+b.dataset.frame); }));
+  }
+
+  function buildSeries() {
+    const F = D.frames, host = $("series");
+    host.innerHTML = "";
+    charts = [];
+    const defs = [];
+    if (derived.envVariesInTime) defs.push({ name: "Temperatura y tolerancia media", key: "lag", zeroBase: false,
+      series: [{ name: "Tolerancia media", values: derived.meanTrait, color: css("--s1") }, { name: "Temperatura media", values: derived.meanEnv, color: css("--ink-2"), dash: true }],
+      val: (i) => `${fmt(derived.meanTrait[i])} / ${fmt(derived.meanEnv[i])}` });
+    defs.push(
+      { name: "Población (N)", series: [{ name: "N", values: F.map((f) => f.N), color: css("--s1") }], yFmt: fmtInt, val: (i) => fmtInt(F[i].N) },
+      { name: "Fitness medio", series: [{ name: "w̄", values: F.map((f) => f.mean_w ?? null), color: css("--s1") }], yDomain: [0, 1], val: (i) => fmt(F[i].mean_w, 3) },
+      { name: derived.envVariesInSpace ? "Varianza genética del rasgo (V_G, todo el paisaje)" : "Varianza genética del rasgo (V_G)", series: [{ name: "V_G", values: F.map((f) => f.vg ?? null), color: css("--s1") }], yFmt: (v) => fmt(v, 2), val: (i) => fmt(F[i].vg, 3) },
+      { name: "Diversidad neutral (π)", series: [{ name: "π", values: F.map((f) => f.pi ?? null), color: css("--s1") }], yFmt: (v) => fmt(v, 3), val: (i) => fmt(F[i].pi, 4) },
+      { name: "Diferenciación entre columnas (F_ST)", series: [{ name: "F_ST", values: F.map((f) => f.fst ?? null), color: css("--s1") }], yFmt: (v) => fmt(v, 2), val: (i) => fmt(F[i].fst, 3) },
+      { name: "Carga genética (enzimas)", series: [{ name: "carga", values: F.map((f) => f.load ?? null), color: css("--s1") }], yFmt: (v) => fmt(v, 2), val: (i) => fmt(F[i].load, 3) },
+    );
+    for (const d of defs) {
+      const wrap = document.createElement("div");
+      wrap.className = "series";
+      wrap.innerHTML = `<div class="series-head"><span class="name">${d.name}</span><span class="val"></span></div>`;
+      if (d.series.length > 1) {
+        const lg = document.createElement("div"); lg.className = "legend";
+        lg.innerHTML = d.series.map((s) => `<span><i class="${s.dash ? "dash" : ""}" style="background:${s.color}"></i>${s.name}</span>`).join("");
+        wrap.appendChild(lg);
+      }
+      const svg = document.createElementNS(NS, "svg");
+      svg.setAttribute("role", "img"); svg.setAttribute("aria-label", d.name);
+      wrap.appendChild(svg);
+      host.appendChild(wrap);
+      const ch = timeChart(svg, { series: d.series, height: d.series.length > 1 ? 110 : 72, yDomain: d.yDomain, yFmt: d.yFmt, zeroBase: d.zeroBase !== false });
+      charts.push({ ch, valEl: wrap.querySelector(".val"), val: d.val });
+    }
+  }
+
+  function geneColors() { return ["--s1", "--s2", "--s3", "--s4"].map(css); }
+
+  function buildGenes() {
+    const m = D.meta, F = D.frames, cols = geneColors();
+    const series = m.trait_genes.map((g, k) => ({ name: g.name, values: F.map((f) => (f.gene_null ? f.gene_null[k] : null)), color: cols[k % cols.length] }));
+    const ch = timeChart($("genes"), { series, height: 130, yDomain: [0, 1], yFmt: (v) => `${fmt(v * 100, 0)} %` });
+    charts.push({ ch });
+    $("geneLegend").innerHTML = series.map((s) => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("");
+  }
+
+  function updateGeneTable() {
+    const m = D.meta, f = D.frames[frame], cols = geneColors();
+    const rows = m.trait_genes.map((g, k) => {
+      const eff = g.weight < 0 ? "sube ↑" : "baja ↓";
+      const nul = f.gene_null ? f.gene_null[k] : null, lvl = f.gene_level ? f.gene_level[k] : null;
+      return `<tr><td><span class="sw" style="background:${cols[k % cols.length]}"></span>${g.name}</td><td class="num">${fmt(g.weight, 2)}</td><td>${eff}</td><td class="num">${nul == null ? "—" : fmt(nul * 100, 1) + " %"}</td><td class="num">${lvl == null ? "—" : "×" + fmt(Math.exp(lvl), 2)}</td></tr>`;
+    }).join("");
+    $("geneTable").innerHTML = `<thead><tr><th>Gen</th><th class="num">Peso W</th><th>Si se rompe, la tolerancia…</th><th class="num">Copias rotas</th><th class="num">Producto (copias sanas)</th></tr></thead><tbody>${rows}</tbody>`;
+  }
+
+  // ------------------------------------------------------------ mapa
+  const map = $("map");
+  let mapGeo = null;
+  function layoutMap() {
+    const m = D.meta, w = map.parentNode.clientWidth - 0;
+    const cw = w / m.width;
+    const ch = Math.max(cw, Math.min(48, 150 / m.height));
+    const top = 18, bottom = 4;
+    const h = Math.round(ch * m.height + top + bottom);
+    const dpr = window.devicePixelRatio || 1;
+    map.width = Math.round(w * dpr); map.height = Math.round(h * dpr);
+    map.style.height = `${h}px`;
+    mapGeo = { w, h, cw, ch, top, dpr };
+  }
+  function cellColor(c, f, R) {
+    const m = D.meta, n = f.density[c];
+    if (layer === "temp") {
+      const span = Math.max(Math.abs(derived.emin), Math.abs(derived.emax), 1e-6);
+      return R.temp(0.5 + f.env[c] / (2 * span));
+    }
+    if (n === 0) return null;
+    if (layer === "density") return R.dens(n / m.K[c] / 1.2);
+    const z = f.trait[c];
+    return z == null ? null : R.mis(Math.abs(z - f.env[c]) / (1.5 * derived.thr));
+  }
+  function drawMap() {
+    if (!mapGeo) return;
+    const m = D.meta, f = D.frames[frame], g = mapGeo, ctx = map.getContext("2d");
+    const R = { dens: ramp3("--seq-lo", "--seq-mid", "--seq-hi"), mis: ramp3("--mis-lo", "--mis-mid", "--mis-hi"), temp: ramp3("--cold", "--neutral", "--warm") };
+    ctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
+    ctx.clearRect(0, 0, g.w, g.h);
+    ctx.fillStyle = css("--surface"); ctx.fillRect(0, 0, g.w, g.h);
+    const empty = css("--grid"), gap = 1;
+    for (let y = 0; y < m.height; y++) for (let x = 0; x < m.width; x++) {
+      const c = y * m.width + x, col = cellColor(c, f, R);
+      const px = x * g.cw, py = g.top + (m.height - 1 - y) * g.ch;
+      ctx.fillStyle = col || empty;
+      ctx.globalAlpha = col ? 1 : 0.45;
+      ctx.fillRect(px + gap / 2, py + gap / 2, g.cw - gap, g.ch - gap);
+    }
+    ctx.globalAlpha = 1;
+    // eje superior: temperatura de cada columna (si varía en el espacio) o número de columna
+    ctx.fillStyle = css("--muted"); ctx.font = `10.5px ${css("--font-data")}`; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+    const step = Math.max(1, Math.ceil(46 / g.cw));
+    for (let x = 0; x < m.width; x += step) {
+      const lab = derived.envVariesInSpace ? fmt(f.env[x], 1) : String(x + 1);
+      ctx.fillText(lab, x * g.cw + g.cw / 2, 12);
+    }
+    const scale = $("mapScale");
+    const bar = (a, b, c) => `<span class="bar" style="background:linear-gradient(90deg,${css(a)},${css(b)},${css(c)})"></span>`;
+    if (layer === "density") scale.innerHTML = `<span>0</span>${bar("--seq-lo", "--seq-mid", "--seq-hi")}<span>1.2 K</span> individuos por celda`;
+    else if (layer === "mismatch") scale.innerHTML = `<span>0</span>${bar("--mis-lo", "--mis-mid", "--mis-hi")}<span>${fmt(1.5 * derived.thr, 2)}</span> |tolerancia − temperatura|`;
+    else { const s = Math.max(Math.abs(derived.emin), Math.abs(derived.emax)); scale.innerHTML = `<span>${fmt(-s, 1)}</span>${bar("--cold", "--neutral", "--warm")}<span>${fmt(s, 1)}</span> temperatura`; }
+    $("mapHint").textContent = derived.envVariesInSpace
+      ? "Arriba: temperatura de cada columna. Cada cuadro es una celda del paisaje; los cuadros grises están vacíos."
+      : "Arriba: número de columna. La temperatura es igual en todo el paisaje y cambia con el tiempo.";
+  }
+  map.addEventListener("mousemove", (evt) => {
+    if (!mapGeo) return;
+    const m = D.meta, r = map.getBoundingClientRect();
+    const x = Math.floor((evt.clientX - r.left) / mapGeo.cw), yy = Math.floor((evt.clientY - r.top - mapGeo.top) / mapGeo.ch);
+    if (x < 0 || x >= m.width || yy < 0 || yy >= m.height) { hideTip(); return; }
+    const y = m.height - 1 - yy, c = y * m.width + x, f = D.frames[frame], z = f.trait[c];
+    showTip(evt, `<div class="t">Celda ${x + 1}, ${y + 1}</div>
+      <div>Temperatura: <span class="n">${fmt(f.env[c])}</span></div>
+      <div>Individuos: <span class="n">${fmtInt(f.density[c])}</span> de K = ${fmtInt(m.K[c])}</div>
+      <div>Tolerancia media: <span class="n">${z == null ? "—" : fmt(z)}</span></div>
+      <div>Desajuste: <span class="n">${z == null ? "—" : fmt(Math.abs(z - f.env[c]))}</span></div>`);
+  });
+  map.addEventListener("mouseleave", hideTip);
+
+  // ------------------------------------------------------------ clina
+  function drawCline() {
+    const svg = $("cline"), m = D.meta, W = m.width, f = frame;
+    const width = Math.max(280, svg.parentNode.clientWidth), height = 230;
+    svg.innerHTML = ""; svg.setAttribute("viewBox", `0 0 ${width} ${height}`); svg.setAttribute("height", height);
+    const mg = { l: 44, r: 12, t: 10, b: 34 };
+    const xsVal = derived.envVariesInSpace ? derived.colEnv[f] : [...Array(W).keys()].map((x) => x + 1);
+    const xlo = Math.min(...xsVal), xhi = Math.max(...xsVal);
+    let ylo = Math.min(derived.tmin, derived.emin) - 0.3, yhi = Math.max(derived.tmax, derived.emax) + 0.3;
+    if (!derived.envVariesInSpace) {
+      // temperatura uniforme: centrar el eje en la temperatura actual para que se vea el retraso
+      const c = derived.meanEnv[f], vals = derived.colTrait[f].filter((v) => v != null);
+      const span = Math.max(2 * derived.thr, ...vals.map((v) => Math.abs(v - c) + 0.2));
+      ylo = c - span; yhi = c + span;
+    }
+    const sx = (v) => mg.l + ((v - xlo) / Math.max(1e-9, xhi - xlo)) * (width - mg.l - mg.r);
+    const sy = (v) => height - mg.b - ((v - ylo) / (yhi - ylo)) * (height - mg.t - mg.b);
+    for (const t of niceTicks(ylo, yhi, 4)) {
+      el("line", { x1: mg.l, x2: width - mg.r, y1: sy(t), y2: sy(t), stroke: css("--grid") }, svg);
+      el("text", { x: mg.l - 6, y: sy(t) + 3.5, "text-anchor": "end" }, svg).textContent = fmt(t, 1);
+    }
+    for (const t of niceTicks(xlo, xhi, 6)) el("text", { x: sx(t), y: height - mg.b + 14, "text-anchor": "middle" }, svg).textContent = derived.envVariesInSpace ? fmt(t, 1) : fmtInt(t);
+    el("text", { x: (mg.l + width - mg.r) / 2, y: height - 4, "text-anchor": "middle", class: "lbl" }, svg).textContent = derived.envVariesInSpace ? "temperatura del lugar" : "columna del paisaje";
+    const env = derived.colEnv[f], thr = derived.thr;
+    let band = "";
+    xsVal.forEach((xv, i) => { band += `${i ? "L" : "M"}${sx(xv)},${sy(env[i] + thr)}`; });
+    for (let i = W - 1; i >= 0; i--) band += `L${sx(xsVal[i])},${sy(env[i] - thr)}`;
+    el("path", { d: band + "Z", fill: css("--band"), stroke: "none" }, svg);
+    el("path", { d: pathFor(xsVal, env, sx, sy), fill: "none", stroke: css("--ink-2"), "stroke-width": 1.5, "stroke-dasharray": "5 4" }, svg);
+    const tr = derived.colTrait[f];
+    el("path", { d: pathFor(xsVal, tr, sx, sy), fill: "none", stroke: css("--s1"), "stroke-width": 2, opacity: 0.55 }, svg);
+    tr.forEach((v, i) => {
+      if (v == null) return;
+      const c = el("circle", { cx: sx(xsVal[i]), cy: sy(v), r: 4.5, fill: css("--s1"), stroke: css("--surface"), "stroke-width": 2 }, svg);
+      c.addEventListener("mousemove", (evt) => showTip(evt, `<div class="t">Columna ${i + 1}</div><div>Temperatura: <span class="n">${fmt(env[i])}</span></div><div>Tolerancia media: <span class="n">${fmt(v)}</span></div><div>Individuos: <span class="n">${fmtInt(derived.colDens[f][i])}</span></div>`));
+      c.addEventListener("mouseleave", hideTip);
+    });
+  }
+
+  // ------------------------------------------------------------ tiles
+  function updateTiles() {
+    const F = D.frames, f = F[frame], m = D.meta;
+    const occupied = derived.colDens[frame].filter((n, x) => n / (m.K[x] * m.height) > 0.3).length;
+    const extinct = f.N === 0;
+    const envTxt = derived.envVariesInSpace ? `${fmt(Math.min(...f.env), 1)} a ${fmt(Math.max(...f.env), 1)}` : fmt(derived.meanEnv[frame], 2);
+    const tiles = [
+      ["Población", extinct ? "Extinta" : fmtInt(f.N), `de ${fmtInt(derived.Ktot)} posibles`, extinct],
+      ["Columnas ocupadas", `${occupied} / ${m.width}`, "con más de 30 % de K", false],
+      ["Temperatura", envTxt, derived.envVariesInSpace ? "rango del paisaje" : "en todo el paisaje", false],
+      ["Tolerancia media", fmt(derived.meanTrait[frame], 2), "valor genético del rasgo", false],
+      ["Fitness medio", fmt(f.mean_w, 3), "1 = perfectamente adaptado", false],
+    ];
+    $("tiles").innerHTML = tiles.map(([k, v, d, a]) => `<div class="tile${a ? " alert" : ""}"><span class="k">${k}</span><span class="v">${v}</span><span class="d">${d}</span></div>`).join("");
+  }
+
+  // ------------------------------------------------------------ estado
+  function setFrame(i) {
+    frame = Math.max(0, Math.min(D.frames.length - 1, i));
+    $("scrub").value = frame;
+    $("gen").textContent = fmtInt(D.frames[frame].gen);
+    drawMap(); drawCline(); updateTiles(); updateGeneTable();
+    for (const c of charts) { c.ch.set(frame); if (c.valEl) c.valEl.textContent = c.val(frame); }
+  }
+
+  let timer = 0;
+  function tick() {
+    if (!playing) return;
+    if (frame >= D.frames.length - 1) { pause(); return; }
+    setFrame(frame + 1);
+    timer = setTimeout(tick, 1000 / (12 * +$("speed").value));   // 12 cuadros/s a 1×
+  }
+  function play() {
+    if (frame >= D.frames.length - 1) setFrame(0);
+    playing = true;
+    $("playLabel").textContent = "Pausa"; $("play").setAttribute("aria-label", "Pausa");
+    $("playIcon").setAttribute("d", "M2 1h3v10H2zM7 1h3v10H7z");
+    clearTimeout(timer);
+    timer = setTimeout(tick, 0);
+  }
+  function pause() {
+    playing = false;
+    clearTimeout(timer);
+    $("playLabel").textContent = "Reproducir"; $("play").setAttribute("aria-label", "Reproducir");
+    $("playIcon").setAttribute("d", "M2 1l9 5-9 5z");
+  }
+
+  async function selectScenario(id, fromHash) {
+    pause();
+    scen = SCENARIOS.includes(id) ? id : "gradient";
+    document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.scen === scen)));
+    if (!fromHash && location.hash !== `#${scen}`) history.replaceState(null, "", `#${scen}`);
+    try {
+      D = await loadScenario(scen);
+    } catch (e) {
+      $("desc").textContent = `${e.message}. Graba el escenario con: python3 examples/record_run.py ${scen}`;
+      return;
+    }
+    build();
+    setFrame(0);
+  }
+
+  function rerender() { if (!D) return; const f = frame; build(); setFrame(f); }
+
+  // ------------------------------------------------------------ eventos
+  $("play").addEventListener("click", () => (playing ? pause() : play()));
+  $("prev").addEventListener("click", () => { pause(); setFrame(frame - 1); });
+  $("next").addEventListener("click", () => { pause(); setFrame(frame + 1); });
+  $("scrub").addEventListener("input", (e) => { pause(); setFrame(+e.target.value); });
+  document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => selectScenario(b.dataset.scen)));
+  document.querySelectorAll("#layers button").forEach((b) => b.addEventListener("click", () => {
+    layer = b.dataset.layer;
+    document.querySelectorAll("#layers button").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
+    drawMap();
+  }));
+  document.addEventListener("keydown", (e) => {
+    if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName) && e.key !== " ") return;
+    if (e.key === " ") { e.preventDefault(); playing ? pause() : play(); }
+    else if (e.key === "ArrowRight") { pause(); setFrame(frame + 1); }
+    else if (e.key === "ArrowLeft") { pause(); setFrame(frame - 1); }
+  });
+  window.addEventListener("hashchange", () => selectScenario(location.hash.slice(1), true));
+  let rt = 0, lastWidth = 0;
+  new ResizeObserver((entries) => {
+    const w = Math.round(entries[0].contentRect.width);
+    if (w === lastWidth) return;               // solo el ancho cambia la geometría de las gráficas
+    lastWidth = w;
+    clearTimeout(rt); rt = setTimeout(rerender, 120);
+  }).observe(document.querySelector(".app"));
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", rerender);
+  new MutationObserver(rerender).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  selectScenario(location.hash.slice(1) || "gradient", true);
+})();
+</script>
