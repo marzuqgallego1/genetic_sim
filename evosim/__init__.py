@@ -3,13 +3,13 @@ from .architecture import GenomeArchitecture, codon_architecture, neutral_archit
 from .ecology import EcoParams, EcoPopulation, Landscape, NicheAxis
 from .environment import StabilizingSelection
 from .layout import GenomeLayout
-from .maps import CodonMap, Gene, NeutralMap, SiteEffectsMap
+from .maps import CodonMap, Gene, NeutralMap, RecognitionCode, Regulation, SiteEffectsMap
 from .population import Population
-from . import stats
+from . import phylo, speciation, stats
 
 __all__ = [
     "GenomeArchitecture", "codon_architecture", "neutral_architecture",
     "EcoParams", "EcoPopulation", "Landscape", "NicheAxis",
     "StabilizingSelection", "GenomeLayout", "CodonMap", "Gene", "NeutralMap",
-    "SiteEffectsMap", "Population", "stats",
+    "SiteEffectsMap", "RecognitionCode", "Regulation", "Population", "stats", "phylo", "speciation",
 ]

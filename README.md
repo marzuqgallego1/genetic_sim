@@ -35,6 +35,18 @@ El motor se **valida contra resultados teóricos conocidos** antes de construir 
 | Dispersión | Stepping-stone, islas o kernel gaussiano |
 | Cambio ambiental | Funciones que modifican el paisaje cada generación (p. ej. calentamiento) |
 
+## Qué modela (fase 3: especiación)
+
+| Concepto | Implementación |
+|---|---|
+| Regulación en trans | Factores de transcripción (TF) con una hélice de reconocimiento: sus aminoácidos determinan qué base prefiere cada posición del sitio de unión |
+| Unión TF–ADN | Termodinámica: energía de contacto aminoácido–base, ocupación θ = Z/(1+Z), Z = Σ x·e^(μ−E); ambos alelos del TF compiten por cada sitio (Tulchinsky et al. 2014; Khatri & Goldstein 2015) |
+| Incompatibilidades Dobzhansky-Muller | **Emergen**: cada linaje aislado deriva por su red neutral de pares TF–sitio que funcionan; el híbrido junta un TF de un linaje con sitios del otro |
+| Alopatría | `Radiation`: vicarianzas sucesivas; cada linaje evoluciona sin flujo génico y se guarda el árbol verdadero |
+| Cruzas de laboratorio | F1, F2 y retrocruzas con meiosis real; aislamiento postcigótico RI = 1 − w_híbrido/w_parental |
+| Conteo de DMIs | Introgresión de pares de diferencias fijadas: un alelo foráneo deletéreo que se rescata al introducir también su pareja |
+| Filogenia | Distancias Jukes-Cantor, divergencia neta de Nei-Li, Neighbor-Joining, distancia de Robinson-Foulds contra el árbol verdadero |
+
 ## Estructura
 
 ```
@@ -49,6 +61,8 @@ evosim/
   population.py    ciclo de vida Wright-Fisher
   ecology.py       paisaje, regulación por densidad, apareamiento local, dispersión
   stats.py         estadísticos: H, π, LD, H-W, F_ST (Nei y Hudson), dN/dS
+  speciation.py    cruzas híbridas, aislamiento reproductivo, conteo de DMIs, radiaciones alopátricas
+  phylo.py         distancias, Neighbor-Joining, Newick, Robinson-Foulds
   recorder.py      graba corridas ecológicas en JSON para el visor
 viewer/            visor web (index.html), grabaciones (data/) y empaquetador (build.py)
 tests/             pruebas unitarias (pytest)
@@ -93,6 +107,7 @@ print(stats.nucleotide_diversity(pop.genomes), pop.last_traits.mean(axis=0))
 | 10 | Crecimiento poblacional | Beverton-Holt, equilibrio en K |
 | 11 | Modelo de islas | F_ST = 1/(1 + 4Nm(d/(d−1))²) (Wright) |
 | 12 | Aislamiento por distancia | F_ST/(1−F_ST) crece con pendiente 1/(4Dσ²) (Rousset 1997) |
+| 13 | Divergencia y filogenia | d_A = 2μt entre linajes (Nei & Li 1979); Neighbor-Joining recupera el árbol verdadero |
 
 Resultados en `validation/RESULTS.md` y figuras en `validation/figures/`.
 
@@ -101,6 +116,7 @@ Resultados en `validation/RESULTS.md` y figuras en `validation/figures/`.
 ```bash
 python3 examples/range_expansion.py --gif     # expansión de rango sobre un gradiente térmico
 python3 examples/climate_change.py            # calentamiento a distintas velocidades
+python3 examples/speciation.py                # radiación alopátrica: aislamiento, DMIs y filogenia
 ```
 
 ## Visor interactivo
@@ -142,6 +158,7 @@ Fenómenos que emergen sin estar programados:
 
 ## Próximas fases
 
-3. Especiación: incompatibilidades Dobzhansky-Muller, aislamiento reproductivo, árboles filogenéticos.
+3. ~~Especiación alopátrica~~ (hecho). Pendiente: especiación con flujo génico (zonas híbridas
+   en el mundo ecológico, refuerzo).
 4. Sexos separados y selección sexual.
 5. Indels y duplicación génica; filogenias reconstruidas desde los genomas.

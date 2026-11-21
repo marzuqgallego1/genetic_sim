@@ -11,6 +11,12 @@ Todos los mapas implementan:
   actividad de cada proteína depende de qué tan radicales son sus cambios de
   aminoácido y de si hay codones de paro prematuros. La dominancia NO se asigna:
   emerge de la cinética enzimática (Kacser & Burns 1981) y de la dosis génica.
+  Opcionalmente incluye regulación en trans: factores de transcripción (TF) cuyos
+  aminoácidos de reconocimiento se unen a sitios de ADN en los promotores de sus
+  genes blanco (modelo termodinámico; Tulchinsky et al. 2014, Khatri & Goldstein 2015).
+  La coevolución TF–sitio en linajes aislados produce incompatibilidades de
+  Dobzhansky-Muller que NO se programan: emergen al juntar en un híbrido un TF de
+  un linaje con sitios de unión del otro.
 """
 from dataclasses import dataclass, field
 
@@ -67,11 +73,42 @@ class Gene:
     K: float = 0.1                    # constante de saturación del flujo (enzimas)
     importance: float = 0.0           # pérdida de fitness del homocigoto nulo (enzimas)
     pleiotropy: np.ndarray = field(default_factory=lambda: np.zeros(0))  # (T,) efecto en cada rasgo
+    recognition_codons: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.int64))  # TF: hélice de reconocimiento
+
+
+@dataclass
+class Regulation:
+    """Un TF (gen `tf`) se une al sitio `site` (bases del genoma) del promotor del gen `target`.
+
+    La posición j del sitio es contactada por el codón de reconocimiento j del TF.
+    """
+    tf: int
+    target: int
+    site: np.ndarray
+
+
+@dataclass
+class RecognitionCode:
+    """Física de la unión proteína-ADN, común a toda la especie (y sus descendientes).
+
+    energy[aa, base]: energía (en kT) de que el aminoácido aa contacte la base; 0 = contacto
+    óptimo. Ocupación de un sitio con energía E por un TF a concentración x·e^mu:
+        θ = Z / (1 + Z),   Z = Σ_alelos x_k e^(mu − E_k)        (Boltzmann, unión competitiva)
+    """
+    energy: np.ndarray          # (21, 4)
+    mu: float = 4.0             # potencial químico (log-concentración) del TF silvestre
+
+    @property
+    def preferred_base(self):
+        return self.energy.argmin(axis=1)
 
 
 class CodonMap:
-    def __init__(self, genes, ancestral, n_traits=0, env_noise_sd=0.0, min_output=1e-3):
+    def __init__(self, genes, ancestral, n_traits=0, env_noise_sd=0.0, min_output=1e-3,
+                 regulations=(), recognition=None):
         self.genes = list(genes)
+        self.regulations = list(regulations)
+        self.recognition = recognition
         self.n_traits = n_traits
         self.env_noise_sd = env_noise_sd
         self.min_output = min_output
@@ -101,7 +138,8 @@ class CodonMap:
 
         # Tabla precalculada: log-actividad de cada posición de codón para cada uno de los 64 codones
         d = AA_DISTANCE[self.anc_aa[:, None], CODON_TO_AA[None, :]]          # (C, 64)
-        loss = np.minimum(1.0, self.codon_c[:, None] * d)
+        with np.errstate(invalid="ignore"):                                   # 0 × inf en columnas de paro
+            loss = np.minimum(1.0, self.codon_c[:, None] * d)
         loss[:, CODON_TO_AA == STOP] = 1.0                                    # paro prematuro = alelo nulo
         self.codon_log_activity = np.log(np.maximum(1.0 - loss, 1e-9))
         self._codon_flat_offset = (np.arange(len(cg)) * 64).astype(np.int64)
@@ -122,9 +160,65 @@ class CodonMap:
         if len(self.trait_idx):
             self.pleiotropy = np.stack([self.genes[i].pleiotropy for i in self.trait_idx])  # (Gt, T)
 
+        # Regulación en trans: sitios de los codones de reconocimiento de cada TF
+        self.tf_idx = np.array([i for i, g in enumerate(self.genes) if g.role == "tf"], dtype=int)
+        self._recog_sites = {}
+        for i in self.tf_idx:
+            cs = np.asarray(self.genes[i].coding_sites).reshape(-1, 3)
+            self._recog_sites[i] = cs[np.asarray(self.genes[i].recognition_codons)]   # (Lr, 3)
+        targets = [r.target for r in self.regulations]
+        if len(set(targets)) != len(targets):
+            raise ValueError("cada gen puede tener a lo sumo un sitio de unión")
+        if any(self.genes[r.target].role == "tf" for r in self.regulations):
+            raise ValueError("los TF no pueden ser blancos de regulación (sin cascadas por ahora)")
+        if self.regulations:
+            if recognition is None:
+                raise ValueError("la regulación requiere un RecognitionCode")
+            anc = ancestral[None, None, :]
+            self._theta0 = {}
+            for r in self.regulations:
+                act = np.ones((1, 2))
+                self._theta0[r.target] = self._occupancy(anc, r, act)[0, 0]
+
+    # ------------------------------------------------------------------
+    def binding_energy(self, genomes, reg):
+        """E[n, k, h]: energía entre el TF del haplotipo k y el sitio del haplotipo h (kT)."""
+        rs = self._recog_sites[reg.tf]
+        b = genomes[:, :, rs]                                                 # (N,2,Lr,3)
+        aa = CODON_TO_AA[(b[..., 0] << 4) | (b[..., 1] << 2) | b[..., 2]]     # (N,2,Lr)
+        site = genomes[:, :, reg.site]                                        # (N,2,Lr)
+        e = self.recognition.energy[aa[:, :, None, :], site[:, None, :, :]]  # (N,k,h,Lr)
+        return e.sum(axis=3)
+
+    def _occupancy(self, genomes, reg, tf_activity):
+        """θ[n, h]: ocupación del sitio del haplotipo h; ambos alelos del TF compiten por él."""
+        E = self.binding_energy(genomes, reg)                                 # (N,2,2)
+        x = 0.5 * tf_activity[:, :, None]                                     # dosis de cada alelo
+        Z = (x * np.exp(self.recognition.mu - E)).sum(axis=1)                 # (N,2)
+        return Z / (1.0 + Z)
+
+    def occupancy(self, genomes, reg):
+        """Ocupación relativa a la ancestral, por haplotipo del sitio: (N, 2)."""
+        act = self._raw_outputs(genomes)[:, :, reg.tf]
+        return self._occupancy(genomes, reg, act) / self._theta0[reg.target]
+
     # ------------------------------------------------------------------
     def gene_outputs(self, genomes):
-        """Producto génico de cada haplotipo: (N, 2, G). Tipo silvestre = 1."""
+        """Producto génico de cada haplotipo: (N, 2, G). Tipo silvestre = 1.
+
+        Incluye actividad de la proteína (codones), expresión cis (promotor) y, para genes
+        regulados, la ocupación de su sitio de unión por el TF (en trans: depende de ambos alelos
+        del TF del individuo).
+        """
+        out = self._raw_outputs(genomes)
+        if self.regulations:
+            act = {i: out[:, :, i].copy() for i in self.tf_idx}
+            for r in self.regulations:
+                theta = self._occupancy(genomes, r, act[r.tf])
+                out[:, :, r.target] *= theta / self._theta0[r.target]
+        return out
+
+    def _raw_outputs(self, genomes):
         b = genomes[:, :, self.codon_sites]                                   # (N,2,C,3)
         codon = (b[..., 0] << 4) | (b[..., 1] << 2) | b[..., 2]               # 0..63, (N,2,C)
         # Optimización: las posiciones idénticas en toda la población aportan lo mismo a todos

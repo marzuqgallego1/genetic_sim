@@ -29,6 +29,8 @@ from evosim import (  # noqa: E402
 )
 from evosim.architecture import CODING, GenomeArchitecture  # noqa: E402
 from evosim.maps import NeutralMap  # noqa: E402
+from evosim import phylo  # noqa: E402
+from evosim.speciation import Radiation  # noqa: E402
 
 FIG = ROOT / "validation" / "figures"
 FIG.mkdir(parents=True, exist_ok=True)
@@ -573,11 +575,85 @@ def isolation_by_distance(rng):
     }
 
 
+# ----------------------------------------------------------------------------- 13
+def divergence_phylogeny(rng):
+    """Divergencia neutral entre linajes aislados (Nei & Li 1979) y reconstrucción filogenética.
+
+    d_xy = θ + 2μt  (polimorfismo ancestral + sustituciones en ambas ramas), π = θ,
+    así la divergencia neta d_A = d_xy − (π_x + π_y)/2 crece como 2μt.
+    Neighbor-Joining sobre d_A debe recuperar la topología verdadera (Robinson-Foulds = 0).
+    """
+    N, mu = 100, 5e-5
+    arch = neutral_architecture(rng, 10, 200, 1.0, mutation_rate=mu)
+    burn = Population(arch, N, rng, selfing=False)
+    burn.run(int(2000 * max(SCALE, 0.5)))                     # equilibrio mutación-deriva
+    rad = Radiation(arch, N, rng, genomes=burn.genomes.copy())
+    T = 2400
+    schedule = {0: "L0", 600: "L1", 1200: "L2", 1800: "L3"}   # vicarianzas sucesivas
+    for t in range(T):
+        if t in schedule:
+            rad.split(schedule[t])
+        rad.step()
+    tips = sorted(l.name for l in rad.tips)
+    G = {n: rad.lineages[n].pop.genomes for n in tips}
+
+    def ancestor_time(x, y):
+        def path(n):
+            out = []
+            while n is not None:
+                out.append(n)
+                n = rad.lineages[n].parent
+            return out
+        px, py = path(x), path(y)
+        common = next(n for n in px if n in py)
+        return T - rad.lineages[rad.lineages[common].children[0]].born
+
+    jc = lambda p: float(stats.jukes_cantor(np.asarray(p)))
+    pis = {n: jc(stats.nucleotide_diversity(G[n])) for n in tips}
+    n = len(tips)
+    DA = np.zeros((n, n))
+    rows = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            dxy = jc(phylo.mean_pairwise_distance(G[tips[i]], G[tips[j]], rng=rng, max_pairs=4000))
+            DA[i, j] = DA[j, i] = dxy - 0.5 * (pis[tips[i]] + pis[tips[j]])
+            rows.append((ancestor_time(tips[i], tips[j]), DA[i, j]))
+    t_arr, d_arr = np.array(rows).T
+    slope = np.sum(t_arr * d_arr) / np.sum(t_arr ** 2)           # recta por el origen
+    tree = phylo.neighbor_joining(DA, tips)
+    true = phylo.collapse_unary(phylo.parse_newick(rad.true_tree()))
+    rf = phylo.robinson_foulds(tree, true)
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    ax = axes[0]
+    ax.plot(t_arr, d_arr, "o", label="pares de linajes")
+    tt = np.linspace(0, T, 50)
+    ax.plot(tt, 2 * mu * tt, "k--", label="Nei & Li: 2μt")
+    ax.set_xlabel("generaciones desde el ancestro común")
+    ax.set_ylabel("divergencia neta d_A (JC)")
+    ax.set_title("Reloj molecular entre linajes")
+    ax.legend()
+    ax = axes[1]
+    ax.axis("off")
+    ax.text(0, 0.95, "Árbol verdadero:\n" + true.newick(3), va="top", family="monospace", fontsize=8, wrap=True)
+    ax.text(0, 0.45, "Neighbor-Joining:\n" + tree.newick(3), va="top", family="monospace", fontsize=8, wrap=True)
+    ax.text(0, 0.05, f"Robinson-Foulds = {rf}", fontsize=11)
+    _save(fig, "13_divergencia_filogenia")
+    rel = abs(slope - 2 * mu) / (2 * mu)
+    return {
+        "nombre": "Divergencia entre linajes y filogenia (Nei-Li, NJ)",
+        "teoria": f"d_A = 2μt, pendiente {2 * mu:.2e}; topología NJ = verdadera",
+        "observado": f"pendiente {slope:.2e} ({rel:.0%} de error); Robinson-Foulds = {rf}",
+        "pasa": rel < 0.1 and rf == 0,
+    }
+
+
 EXPERIMENTS = {
     "hw": hardy_weinberg, "drift": drift, "fixation": neutral_fixation, "kimura": kimura,
     "mutation": mutation_drift, "linkage": linkage, "selection": deterministic_selection,
     "dominance": emergent_dominance, "dnds": dnds,
     "growth": population_growth, "islands": island_model, "ibd": isolation_by_distance,
+    "phylo": divergence_phylogeny,
 }
 
 

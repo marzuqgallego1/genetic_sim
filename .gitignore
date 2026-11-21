@@ -5,3 +5,4 @@ validation/run.log
 examples/output/*.log
 viewer/dist/
 viewer/data/*.log
+examples/output/*.npy
