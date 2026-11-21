@@ -56,6 +56,52 @@ def fixed_derived(genomes, ancestral):
     return (h == h[0]).all(axis=0) & (h[0] != ancestral)
 
 
+# ---------------------------------------------------------------- estructura poblacional
+def _group_freqs(genomes, groups, sites, ancestral):
+    """Frecuencia del alelo derivado y n° de haplotipos por grupo: (G, S), (G,)."""
+    labels, inv = np.unique(groups, return_inverse=True)
+    d = (genomes[:, :, sites] != ancestral[sites]).sum(axis=1)     # (N, S) copias derivadas
+    G = len(labels)
+    counts = np.zeros((G, len(sites)))
+    np.add.at(counts, inv, d)
+    n = 2 * np.bincount(inv, minlength=G).astype(float)
+    return counts / n[:, None], n, labels
+
+
+def fst(genomes, groups, ancestral, sites=None, min_size=2):
+    """F_ST = (H_T - H_S) / H_T (Nei), promediado como cociente de promedios sobre sitios.
+    H_S corrige el sesgo de muestreo con n/(n-1). Grupos con < min_size individuos se ignoran."""
+    if sites is None:
+        sites = np.arange(genomes.shape[-1])
+    p, n, _ = _group_freqs(genomes, groups, sites, ancestral)
+    ok = n >= 2 * min_size
+    p, n = p[ok], n[ok]
+    hs = (2 * p * (1 - p) * (n / (n - 1))[:, None]).mean(axis=0)
+    pbar = p.mean(axis=0)
+    ht = 2 * pbar * (1 - pbar)
+    return float((ht - hs).sum() / ht.sum()) if ht.sum() > 0 else np.nan
+
+
+def pairwise_fst(genomes, groups, ancestral, sites=None):
+    """F_ST de Hudson (1992) entre cada par de grupos: (H_entre − H_dentro) / H_entre.
+
+    Es el F_ST de la teoría de identidad por descendencia (Q_dentro − Q_entre)/(1 − Q_entre)
+    usado por Rousset (1997). Ojo: el G_ST de Nei con dos poblaciones da ~la mitad,
+    porque su H_T mezcla pares de dentro y de entre. Devuelve (matriz, etiquetas)."""
+    if sites is None:
+        sites = np.arange(genomes.shape[-1])
+    p, n, labels = _group_freqs(genomes, groups, sites, ancestral)
+    G = len(labels)
+    hw_g = 2 * p * (1 - p) * (n / (n - 1))[:, None]
+    M = np.zeros((G, G))
+    for i in range(G):
+        for j in range(i + 1, G):
+            hb = (p[i] * (1 - p[j]) + p[j] * (1 - p[i])).sum()
+            hw = ((hw_g[i] + hw_g[j]) / 2).sum()
+            M[i, j] = M[j, i] = (hb - hw) / hb if hb > 0 else np.nan
+    return M, labels
+
+
 # ---------------------------------------------------------------- evolución molecular
 def _aa(codon):
     return CODON_TO_AA[16 * codon[0] + 4 * codon[1] + codon[2]]

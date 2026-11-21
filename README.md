@@ -21,7 +21,19 @@ El motor se **valida contra resultados teóricos conocidos** antes de construir 
 | Regulación cis | Promotores cuyas mutaciones cambian el nivel de expresión |
 | Pleiotropía | Un gen de rasgo afecta varios rasgos cuantitativos |
 | Plasticidad | Ruido ambiental en el fenotipo (heredabilidad < 1) |
-| Selección sobre rasgos | Selección estabilizadora gaussiana (provisional, la reemplazará la ecología) |
+| Selección sobre rasgos | Selección estabilizadora gaussiana (Wright-Fisher) o ajuste al ambiente local (ecología) |
+
+## Qué modela (fase 2: mundo ecológico)
+
+| Concepto | Implementación |
+|---|---|
+| Espacio | Cuadrícula de celdas con capas ambientales (p. ej. temperatura) y capacidad de carga K |
+| Nicho | Cada rasgo debe coincidir con una variable ambiental: w ∝ exp(−(z − E)²/2ω²) |
+| Regulación por densidad | Beverton-Holt por celda; el tamaño poblacional emerge y puede llegar a 0 (extinción) |
+| Estocasticidad demográfica | Número de hijos ~ Poisson |
+| Apareamiento local | Padre elegido dentro de la celda ∝ fitness; autofecundación opcional (sin ella hay efecto Allee) |
+| Dispersión | Stepping-stone, islas o kernel gaussiano |
+| Cambio ambiental | Funciones que modifican el paisaje cada generación (p. ej. calentamiento) |
 
 ## Estructura
 
@@ -35,9 +47,11 @@ evosim/
   architecture.py  construye genomas (neutros o con genes reales)
   environment.py   selección sobre rasgos
   population.py    ciclo de vida Wright-Fisher
-  stats.py         estadísticos: H, π, LD, H-W, dN/dS (Nei-Gojobori + Jukes-Cantor)
+  ecology.py       paisaje, regulación por densidad, apareamiento local, dispersión
+  stats.py         estadísticos: H, π, LD, H-W, F_ST (Nei y Hudson), dN/dS
 tests/             pruebas unitarias (pytest)
 validation/        experimentos que comparan la simulación con la teoría
+examples/          demos de fenómenos emergentes (salida en examples/output/)
 ```
 
 ## Uso
@@ -74,21 +88,45 @@ print(stats.nucleotide_diversity(pop.genomes), pop.last_traits.mean(axis=0))
 | 7 | Respuesta a la selección | recursión determinista, residuos ~ N(0,1) |
 | 8 | Dominancia emergente | mutaciones de gran efecto más recesivas |
 | 9 | Evolución molecular | dN/dS < 1 con selección purificadora; reloj molecular neutro |
+| 10 | Crecimiento poblacional | Beverton-Holt, equilibrio en K |
+| 11 | Modelo de islas | F_ST = 1/(1 + 4Nm(d/(d−1))²) (Wright) |
+| 12 | Aislamiento por distancia | F_ST/(1−F_ST) crece con pendiente 1/(4Dσ²) (Rousset 1997) |
 
 Resultados en `validation/RESULTS.md` y figuras en `validation/figures/`.
 
+## Demos
+
+```bash
+python3 examples/range_expansion.py --gif     # expansión de rango sobre un gradiente térmico
+python3 examples/climate_change.py            # calentamiento a distintas velocidades
+```
+
+Fenómenos que emergen sin estar programados:
+
+- **Clina adaptativa** y **límite de rango temporal**: la especie coloniza el frío en ~150
+  generaciones, pero hacia el calor se detiene ~400 generaciones en tolerancia ≈ 1.2 y solo
+  completa el gradiente hacia la generación ~750. Causa: subir la tolerancia solo era fácil por
+  pérdida de función de un gen (techo ≈ +1); más allá se requieren mutaciones raras de ganancia
+  en promotores, que se acumulan lentamente.
+- **Retraso adaptativo** proporcional a la velocidad del cambio, cercano a la predicción de
+  Lynch & Lande: k·(ω² + V_P)/V_G.
+- **Límite a la adaptación**: con calentamiento rápido la población se adapta rompiendo genes
+  hasta agotar ese camino; la varianza genética colapsa y la especie se extingue.
+
 ## Limitaciones actuales (honestas)
 
-- Tamaño poblacional constante y generaciones discretas (sin edad ni solapamiento).
+- Generaciones discretas, sin edad ni solapamiento.
 - Hermafroditas; aún no hay sexos separados ni elección de pareja.
 - Solo sustituciones: faltan inserciones/deleciones y duplicaciones de genes.
 - Sin redes de regulación génica en trans; la epistasis surge solo de los mapas no lineales
-  (flujo enzimático, selección gaussiana).
-- Sin espacio ni ecología: el fitness por rasgos es una función fija.
+  (flujo enzimático, selección sobre rasgos).
+- Los recursos no se modelan explícitamente (la competencia es la capacidad K por celda);
+  no hay interacciones entre especies.
+- Las tasas de mutación de las demos están escaladas hacia arriba (práctica habitual para que
+  la evolución ocurra en cientos y no millones de generaciones).
 
 ## Próximas fases
 
-2. Mundo ecológico: espacio, recursos, densidad, tamaño poblacional variable.
-3. Subdivisión y migración (F_ST), especiación alopátrica, incompatibilidades Dobzhansky-Muller.
+3. Especiación: incompatibilidades Dobzhansky-Muller, aislamiento reproductivo, árboles filogenéticos.
 4. Sexos separados y selección sexual.
 5. Indels y duplicación génica; filogenias reconstruidas desde los genomas.

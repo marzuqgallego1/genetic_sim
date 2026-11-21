@@ -13,3 +13,6 @@ Semilla 2026.
 | Respuesta a la selección generación a generación | p' = p(p·w₁₁ + q·w₁₂)/w̄;  residuos z ~ N(0,1) | z: media = -0.033, d.e. = 0.990 (1623 pasos) | ✅ |
 | Dominancia emergente (Kacser-Burns) | Mutaciones deletéreas mayormente recesivas; h decrece con s | h medio = 0.45; ρ(s,h) = -0.82; 26% de mutaciones codificantes neutras (sinónimas) | ✅ |
 | dN/dS y reloj molecular | ω < 1 con selección purificadora; ω ≈ 1 sin restricción | ω = 0.62 con restricción; ω = 1.01 en control; dS final = 0.588 (μ·t = 0.600) | ✅ |
+| Crecimiento poblacional con regulación por densidad | Beverton-Holt; equilibrio N* = K = 500 | desviación máx. del promedio = 2.6%; N en equilibrio = 503 | ✅ |
+| Diferenciación entre poblaciones (islas de Wright) | F_ST = 1/(1 + 4Nm(d/(d−1))²) | m=0.005: 0.488 vs 0.474; m=0.02: 0.187 vs 0.184; m=0.08: 0.049 vs 0.053 | ✅ |
+| Aislamiento por distancia (Rousset) | pendiente = 1/(4Dσ²) = 0.0500 | pendiente = 0.0537 | ✅ |

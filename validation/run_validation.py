@@ -23,7 +23,10 @@ from scipy import integrate, stats as sps
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from evosim import GenomeLayout, Population, SiteEffectsMap, codon_architecture, neutral_architecture, stats  # noqa: E402
+from evosim import (  # noqa: E402
+    EcoParams, EcoPopulation, GenomeLayout, Landscape, Population, SiteEffectsMap,
+    codon_architecture, neutral_architecture, stats,
+)
 from evosim.architecture import CODING, GenomeArchitecture  # noqa: E402
 from evosim.maps import NeutralMap  # noqa: E402
 
@@ -439,10 +442,142 @@ def dnds(rng):
     }
 
 
+# ============================================================================ ecología
+def _uniform_founders(arch, land, rng, per_cell, p0=0.5):
+    """Fundadores con variación neutra preexistente (frecuencia p0 en cada sitio)."""
+    cells = np.repeat(np.arange(land.n_cells), per_cell)
+    allele = rng.random((len(cells), 2, arch.layout.L)) < p0
+    g = np.where(allele, (arch.ancestral + 1) % 4, arch.ancestral).astype(np.uint8)
+    return g, cells
+
+
+# ----------------------------------------------------------------------------- 10
+def population_growth(rng):
+    """Crecimiento con regulación por densidad: N_{t+1} = λN / (1 + (λ-1)N/K)  (Beverton-Holt)."""
+    K, lam, N0, T, R = 500, 2.0, 10, 40, int(40 * SCALE) + 5
+    arch = neutral_architecture(rng, 1, 10, 0.5)
+    traj = np.zeros((R, T + 1))
+    for r in range(R):
+        land = Landscape(1, 1, K=K)
+        pop = EcoPopulation.founders(arch, land, rng, np.zeros(N0, int), EcoParams(fecundity=lam, dispersal="none"))
+        traj[r, 0] = pop.N
+        for t in range(T):
+            pop.step()
+            traj[r, t + 1] = pop.N
+    det = [N0]
+    for _ in range(T):
+        det.append(lam * det[-1] / (1 + (lam - 1) * det[-1] / K))
+    det = np.array(det)
+    mean = traj.mean(axis=0)
+    rel = np.max(np.abs(mean[1:] - det[1:]) / det[1:])
+    eq = traj[:, 25:].mean()
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    for r in range(min(R, 15)):
+        ax.plot(traj[r], color="C0", alpha=0.25, lw=0.8)
+    ax.plot(mean, color="C0", lw=2, label="promedio simulación")
+    ax.plot(det, "k--", label="Beverton-Holt determinista")
+    ax.axhline(K, color="gray", lw=0.8)
+    ax.set_xlabel("generación")
+    ax.set_ylabel("tamaño poblacional N")
+    ax.set_title(f"Crecimiento regulado por densidad (λ = {lam}, K = {K})")
+    ax.legend()
+    _save(fig, "10_crecimiento")
+    return {
+        "nombre": "Crecimiento poblacional con regulación por densidad",
+        "teoria": f"Beverton-Holt; equilibrio N* = K = {K}",
+        "observado": f"desviación máx. del promedio = {rel:.1%}; N en equilibrio = {eq:.0f}",
+        "pasa": rel < 0.1 and abs(eq - K) / K < 0.03,
+    }
+
+
+# ----------------------------------------------------------------------------- 11
+def island_model(rng):
+    """Modelo de islas de Wright: F_ST ≈ 1 / (1 + 4Nm·(d/(d-1))²)."""
+    d, K = 20, 50
+    burn, meas = 300, int(500 * SCALE) + 100
+    arch = neutral_architecture(rng, 20, 20, 1.0)
+    rows = []
+    for m in (0.005, 0.02, 0.08):
+        land = Landscape(d, 1, K=K)
+        g, cells = _uniform_founders(arch, land, rng, K)
+        pop = EcoPopulation(arch, land, rng, g, cells, EcoParams(dispersal="island", migration_rate=m))
+        pop.run(burn)
+        vals = []
+        pop.run(meas, callback=lambda p: vals.append(stats.fst(p.genomes, p.cells, arch.ancestral)), every=10)
+        rows.append((m, np.mean(vals), 1 / (1 + 4 * K * m * (d / (d - 1)) ** 2)))
+
+    fig, ax = plt.subplots(figsize=(5.5, 4))
+    mm = np.logspace(-3, -0.9, 100)
+    ax.plot(4 * K * mm, 1 / (1 + 4 * K * mm * (d / (d - 1)) ** 2), "k--", label="teoría")
+    ax.plot([4 * K * r[0] for r in rows], [r[1] for r in rows], "o", ms=8, label="simulación")
+    ax.set_xscale("log")
+    ax.set_xlabel("4Nm (migrantes efectivos por generación × 4)")
+    ax.set_ylabel("F_ST")
+    ax.set_title(f"Modelo de islas de Wright ({d} demes, N = {K})")
+    ax.legend()
+    _save(fig, "11_islas_fst")
+    rel = max(abs(r[1] - r[2]) / r[2] for r in rows)
+    return {
+        "nombre": "Diferenciación entre poblaciones (islas de Wright)",
+        "teoria": "F_ST = 1/(1 + 4Nm(d/(d−1))²)",
+        "observado": "; ".join(f"m={r[0]}: {r[1]:.3f} vs {r[2]:.3f}" for r in rows),
+        "pasa": rel < 0.2,
+    }
+
+
+# ----------------------------------------------------------------------------- 12
+def isolation_by_distance(rng):
+    """Aislamiento por distancia en 1D (Rousset 1997): F_ST/(1−F_ST) ≈ a + r / (4Dσ²)."""
+    n_demes, K, m = 40, 50, 0.1
+    T, meas = int(2500 * SCALE) + 1000, 1000
+    arch = neutral_architecture(rng, 20, 20, 1.0)
+    land = Landscape(n_demes, 1, K=K)
+    g, cells = _uniform_founders(arch, land, rng, K)
+    pop = EcoPopulation(arch, land, rng, g, cells, EcoParams(dispersal="stepping_stone", migration_rate=m))
+    pop.run(T - meas)
+    dists = np.arange(1, 11)
+    acc = []
+
+    def rec(p):
+        M, labels = stats.pairwise_fst(p.genomes, p.cells, arch.ancestral)
+        pos = land.x[labels]
+        central = (pos >= 10) & (pos < n_demes - 10)
+        out = []
+        for r in dists:
+            vals = [M[i, j] for i in np.flatnonzero(central) for j in range(len(labels)) if pos[j] - pos[i] == r]
+            v = np.mean(vals)
+            out.append(v / (1 - v))
+        acc.append(out)
+
+    pop.run(meas, callback=rec, every=50)
+    y = np.mean(acc, axis=0)
+    slope, icpt = np.polyfit(dists, y, 1)
+    sigma2 = m          # un paso ±1 con probabilidad m  =>  varianza de dispersión = m
+    theory = 1 / (4 * K * sigma2)
+
+    fig, ax = plt.subplots(figsize=(5.5, 4))
+    ax.plot(dists, y, "o", label="simulación")
+    ax.plot(dists, icpt + slope * dists, "-", color="C0", lw=1, label=f"ajuste: pendiente {slope:.4f}")
+    ax.plot(dists, icpt + theory * dists, "k--", label=f"Rousset: pendiente {theory:.4f}")
+    ax.set_xlabel("distancia entre demes (celdas)")
+    ax.set_ylabel("F_ST / (1 − F_ST)")
+    ax.set_title("Aislamiento por distancia (stepping-stone 1D)")
+    ax.legend()
+    _save(fig, "12_aislamiento_distancia")
+    return {
+        "nombre": "Aislamiento por distancia (Rousset)",
+        "teoria": f"pendiente = 1/(4Dσ²) = {theory:.4f}",
+        "observado": f"pendiente = {slope:.4f}",
+        "pasa": abs(slope - theory) / theory < 0.3,
+    }
+
+
 EXPERIMENTS = {
     "hw": hardy_weinberg, "drift": drift, "fixation": neutral_fixation, "kimura": kimura,
     "mutation": mutation_drift, "linkage": linkage, "selection": deterministic_selection,
     "dominance": emergent_dominance, "dnds": dnds,
+    "growth": population_growth, "islands": island_model, "ibd": isolation_by_distance,
 }
 
 
