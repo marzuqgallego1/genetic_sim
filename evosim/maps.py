@@ -105,8 +105,12 @@ class RecognitionCode:
 
 class CodonMap:
     def __init__(self, genes, ancestral, n_traits=0, env_noise_sd=0.0, min_output=1e-3,
-                 regulations=(), recognition=None):
+                 regulations=(), recognition=None, expression_omega=None):
         self.genes = list(genes)
+        # Selección estabilizadora sobre el nivel de transcripción de los genes regulados:
+        # log w += −Σ (log expr)² / (2 ω_e²), con expr = ocupación diploide / ocupación ancestral.
+        # None = apagada (solo cuenta el efecto del producto génico a través del flujo/rasgos).
+        self.expression_omega = expression_omega
         self.regulations = list(regulations)
         self.recognition = recognition
         self.n_traits = n_traits
@@ -210,13 +214,23 @@ class CodonMap:
         regulados, la ocupación de su sitio de unión por el TF (en trans: depende de ambos alelos
         del TF del individuo).
         """
+        return self._outputs_and_expression(genomes)[0]
+
+    def expression_levels(self, genomes):
+        """Nivel de transcripción diploide de cada gen regulado, relativo al ancestral: (N, R).
+        Columnas en el orden de `self.regulations`."""
+        return self._outputs_and_expression(genomes)[1]
+
+    def _outputs_and_expression(self, genomes):
         out = self._raw_outputs(genomes)
+        expr = np.ones((genomes.shape[0], len(self.regulations)))
         if self.regulations:
             act = {i: out[:, :, i].copy() for i in self.tf_idx}
-            for r in self.regulations:
-                theta = self._occupancy(genomes, r, act[r.tf])
-                out[:, :, r.target] *= theta / self._theta0[r.target]
-        return out
+            for k, r in enumerate(self.regulations):
+                rel = self._occupancy(genomes, r, act[r.tf]) / self._theta0[r.target]   # (N,2)
+                out[:, :, r.target] *= rel
+                expr[:, k] = rel.mean(axis=1)
+        return out, expr
 
     def _raw_outputs(self, genomes):
         b = genomes[:, :, self.codon_sites]                                   # (N,2,C,3)
@@ -242,8 +256,12 @@ class CodonMap:
 
     def evaluate(self, genomes, rng=None):
         N = genomes.shape[0]
-        out = self.gene_outputs(genomes).mean(axis=1)    # dosis diploide (N, G), silvestre = 1
+        out, expr = self._outputs_and_expression(genomes)
+        out = out.mean(axis=1)                           # dosis diploide (N, G), silvestre = 1
         logw = np.zeros(N)
+        if self.expression_omega and self.regulations:
+            le = np.log(np.maximum(expr, self.min_output))
+            logw -= (le ** 2).sum(axis=1) / (2.0 * self.expression_omega ** 2)
         if len(self.enzyme_idx):
             E = out[:, self.enzyme_idx]
             flux = E * (1.0 + self.K) / (E + self.K)      # Michaelis-Menten normalizado: flujo(1) = 1

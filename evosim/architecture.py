@@ -52,6 +52,7 @@ def codon_architecture(
     tf_mu=4.0,                  # log-concentración del TF: θ ancestral = e^mu/(1+e^mu)
     contact_energy=(1.0, 3.0),  # rango de energías (kT) de un contacto aminoácido-base no óptimo
     tf_target_roles=("enzyme", "trait"),  # qué tipo de genes pueden ser regulados
+    expression_omega=None,      # ancho de la selección estabilizadora sobre la expresión regulada (None = apagada)
 ):
     """Construye un genoma con genes reales (codones) repartidos en cromosomas.
 
@@ -149,5 +150,6 @@ def codon_architecture(
             regulations.append(Regulation(tf=tf, target=gi, site=binding_sites[gi]))
 
     gmap = CodonMap(genes, ancestral, n_traits=n_traits, env_noise_sd=env_noise_sd,
-                    regulations=regulations, recognition=recognition)
+                    regulations=regulations, recognition=recognition,
+                    expression_omega=expression_omega)
     return GenomeArchitecture(layout, ancestral, gmap, mutation_rate, kappa, site_class)
