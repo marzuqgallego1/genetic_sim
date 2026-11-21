@@ -98,3 +98,23 @@ python3 examples/record_run.py gradient && python3 viewer/build.py   # visor
 ```
 
 Máquina: 2 núcleos. Una `Population` con la arquitectura de la demo tarda ~20–30 ms por generación con N = 200.
+
+## Resultado de la prueba de un blanco por TF (`n_tf=8, tf_targets=1`; terminó después del commit 52b4b3b)
+
+| gen | DMIs fuertes (tol 0.02) | K | RI_F1 | RI_F2 |
+|---|---|---|---|---|
+| 2000 | 0 | 303 | −0.012 | 0.008 |
+| 4000 | 7 | 585 | 0.003 | 0.036 |
+| 6000 | 25 | 789 | 0.006 | 0.049 |
+| 8000 | 97 | 963 | 0.014 | 0.046 |
+| 10000 | 75 | 1051 | 0.010 | 0.053 |
+
+- **Sin pleiotropía, TF y sitio sí coevolucionan.** Las energías híbridas superan a las parentales.
+  - Ejemplo: tf20→g0 tiene E ≈ 2 en ambos padres, pero TF_B sobre el sitio de A da 5.3–5.9.
+  - Ejemplo: tf21→g6 tiene E ≤ 1.5 en los padres y 5.3 en el híbrido.
+  - Con 2 blancos por TF esto casi no pasaba.
+- Las DMIs fuertes crecen más rápido que K, y RI_F2 crece de forma casi monótona (0.008 → 0.053). Aun así, el aislamiento total sigue siendo modesto (~5 %) a 10 000 generaciones.
+- Algunos sitios de genes poco importantes (g2, g4: importancia ≈ 0.01–0.03) pierden la unión por completo (E > 9): se vuelven efectivamente no regulados y derivan.
+- **Recomendación**: usar `tf_targets=1` en la demo.
+  - Para un aislamiento más fuerte: blancos con más importancia o más TFs.
+  - Más realista aún: hacer que la mala expresión importe más allá del amortiguamiento de Kacser-Burns, por ejemplo con selección estabilizadora sobre el nivel de expresión.
