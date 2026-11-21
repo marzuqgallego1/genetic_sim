@@ -115,6 +115,28 @@ Hoy el mecanismo funciona, pero el aislamiento es ~5 % a las 10 000 generaciones
   - filogenias de genes vs. de especies.
 - **Visor para la fase 3**: árbol de linajes en el tiempo, RI y DMIs por par, fitness por clase de cruza.
 
+## Hoja de ruta: cuánto falta para terminar
+
+El proyecto no tiene un final fijo, pero el plan acordado se considera **completo con las
+fases 3, 4 y 5**. Con ellas el simulador cubre los grandes temas de la biología evolutiva:
+
+- herencia, mutación, deriva y selección (fase 1);
+- ecología y adaptación (fase 2);
+- origen de especies (fase 3);
+- selección sexual (fase 4);
+- origen de genes nuevos (fase 5).
+
+| Fase | Qué aporta | Estado | Esfuerzo estimado |
+|---|---|---|---|
+| 3. Especiación alopátrica | DMIs, aislamiento postcigótico, filogenias | Casi lista: falta que el aislamiento crezca con claridad y cerrar la fase | 1 sesión |
+| 4. Sexos separados y selección sexual | Cromosomas sexuales, elección de pareja, regla de Haldane | Pendiente | 1–2 sesiones largas |
+| 5. Indels y duplicación génica | Genes nuevos, sub/neofuncionalización, árboles de genes | Pendiente | 1–2 sesiones largas |
+| *3b. Especiación con flujo génico* (opcional) | Zonas híbridas y refuerzo en el mundo ecológico | Pendiente | 1 sesión |
+| *Visor de especiación* (opcional) | Árbol de linajes y aislamiento en el visor | Pendiente | < 1 sesión |
+
+Después de la fase 5 vendrían extras sin fin definido: varias especies que interactúan
+(depredador-presa, competencia) o la evolución del desarrollo.
+
 ## Comandos útiles
 
 ```bash
