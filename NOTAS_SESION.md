@@ -12,12 +12,12 @@ reportados con honestidad (qué funciona y qué no).
 | 1. Motor genético (ADN, meiosis, mutación K80, codones, dominancia emergente) | ✅ hecho y subido | `0f44b2c` |
 | 2. Mundo ecológico (paisaje, Beverton-Holt, dispersión, nicho, cambio climático) | ✅ hecho y subido | `b93f20d` |
 | Visor interactivo (`viewer/`, artifact privado en claude.ai) | ✅ hecho y subido | `532f84d` |
-| 3. Especiación | 🟡 **en curso, sin commit** | — |
+| 3. Especiación | 🟡 **en curso** (subido, falta cerrar) | `52b4b3b`, `43a8608` |
 
 Validaciones 1–12 pasan; 17 pruebas de fases 1–2 + 7 nuevas de fase 3 = **24 pruebas pasan**
 (`python3 -m pytest -q tests`).
 
-## Fase 3: lo que ya está implementado (sin commit)
+## Fase 3: lo que ya está implementado
 
 Archivos nuevos/modificados (ver `git status`):
 
@@ -71,22 +71,49 @@ Archivos nuevos/modificados (ver `git status`):
    - Con 2 blancos por TF, cambiar la preferencia desajusta ambos sitios (pleiotropía), así que TF y sitio casi no coevolucionan. Las energías híbridas quedan dentro del rango parental.
    - La mayoría de las DMIs contadas son **epistasis débil entre mutaciones ligeramente deletéreas** (concavidad del flujo de Kacser-Burns dentro de un mismo gen), no incompatibilidades TF–sitio.
    - Esto es coherente con Khatri & Goldstein: la pleiotropía y la selección eficiente frenan las DMIs regulatorias.
-4. **En curso al cerrar esta sesión**: prueba con `n_tf=8, tf_targets=1` (un blanco por TF, como en el modelo de Khatri & Goldstein) para ver si la coevolución TF–sitio se libera y el RI crece.
+4. **Terminada** (resultados al final de este archivo): prueba con `n_tf=8, tf_targets=1` (un blanco por TF, como en el modelo de Khatri & Goldstein) para ver si la coevolución TF–sitio se libera y el RI crece.
    - Calentamiento de 20 000 gens + 10 000 de divergencia, imprimiendo DMIs fuertes (`tol=0.02`), RI_F1 y RI_F2 cada 2 000 gens.
    - Script copiado en `examples/diag_tf_divergence.py`. Guarda el calentamiento en `burn_tf1.npy`, en el directorio desde donde se corre.
    - Uso: `python3 examples/diag_tf_divergence.py > diag.log`.
    - Imprime, por cada TF→blanco, las energías de unión en A, en B y cruzadas (TF_A/sitio_B, TF_B/sitio_A), junto con las diferencias en la hélice y en el sitio.
 
-## Próximos pasos sugeridos
+## Qué falta para cerrar la fase 3
 
-1. Terminar la prueba de un blanco por TF y elegir el régimen de la demo:
-   - si el RI crece claramente, usar `tf_targets=1`;
-   - si no, mantener el actual y reportar el resultado honesto (aislamiento lento; la bola de nieve existe pero dominada por epistasis débil).
-2. Opcional: en `count_dmis`, clasificar las DMIs por mecanismo (TF–sitio vs. intragénica) y graficarlo. Considerar `tol=0.02` para "DMIs fuertes".
-3. Opcional: validación 14 (bola de nieve: exponente > 1), solo si resulta robusta entre réplicas.
-4. Correr la validación completa (`python3 validation/run_validation.py`) para regenerar `RESULTS.md` con la fila 13.
-5. Actualizar el README con resultados y limitaciones; commit "Fase 3: especiación alopátrica" y push. **El usuario aprueba los push.**
-6. Ideas para después: especiación con flujo génico (zonas híbridas en el mundo ecológico, refuerzo); visor para la fase 3; fase 4 (sexos separados y selección sexual).
+Objetivo: una demo donde el aislamiento postcigótico crezca **claramente** con el tiempo de divergencia.
+Hoy el mecanismo funciona, pero el aislamiento es ~5 % a las 10 000 generaciones.
+
+1. **Que la mala regulación cueste más** (paso principal).
+   - Hoy un sitio mal ocupado solo reduce la expresión de una enzima, y el flujo de Kacser-Burns la amortigua.
+   - Propuesta: selección estabilizadora sobre el **nivel de expresión** de los genes regulados, con su óptimo en el nivel ancestral y un término de fitness log w = −(log expr)²/(2ω_e²).
+   - Es biológicamente realista: hay sobre- y sub-expresión dañinas, y muchos genes del desarrollo son sensibles a la dosis.
+   - Implementarlo como parámetro de `codon_architecture`/`CodonMap` (p. ej. `expression_omega`). Por defecto debe quedar apagado para no cambiar las validaciones.
+2. **Rehacer la demo** `examples/speciation.py` con `tf_targets=1` (ver el resultado al final) más el punto 1.
+   - El cambio de arquitectura invalida el calentamiento en caché: incluir los parámetros en el nombre del archivo.
+   - Comprobar que RI_F2 crece con el tiempo de divergencia (patrón de Coyne & Orr) y que la bola de nieve se mantiene.
+3. **Clasificar las DMIs por mecanismo** en `count_dmis`: TF–sitio vs. epistasis intragénica débil.
+   - Graficar ambas por separado.
+   - Usar `tol=0.02` para "DMIs fuertes".
+4. Opcional: **validación 14** (bola de nieve: exponente > 1), solo si resulta robusta entre réplicas (≥ 3 semillas).
+5. **Cerrar**:
+   - validación completa (`python3 validation/run_validation.py`, ~12 min) para regenerar `RESULTS.md` con la fila 13 (y la 14 si existe);
+   - en el README: resultados y limitaciones honestas (escalado Nμ sin Ns, carga por deriva, el calentamiento necesario, aislamiento lento);
+   - commit "Fase 3: especiación alopátrica" y push (**el usuario aprueba los push**).
+
+## Fases siguientes (a elegir con el usuario)
+
+- **3b. Especiación con flujo génico** (continuación natural, usa el mundo ecológico de la fase 2):
+  - dos linajes divergidos en alopatría vuelven a encontrarse en el paisaje (contacto secundario);
+  - ver si la zona híbrida se mantiene (clina de tensión, ancho ∝ σ/√s según Barton & Hewitt) o si las especies se fusionan;
+  - **refuerzo**: si se añade preferencia de apareamiento heredable, ¿la selección contra híbridos aumenta el aislamiento precigótico?
+  - Extender el visor para mostrarlo.
+- **4. Sexos separados y selección sexual**:
+  - cromosomas sexuales (XY/ZW), proporción de sexos;
+  - preferencias de pareja y caracteres sexuales (modelo de Lande-Kirkpatrick, desbocamiento de Fisher);
+  - permite estudiar la **regla de Haldane** (el sexo heterogamético sufre más en los híbridos) y el efecto del X grande.
+- **5. Indels y duplicación génica**:
+  - duplicaciones que producen copias redundantes, subfuncionalización o neofuncionalización;
+  - filogenias de genes vs. de especies.
+- **Visor para la fase 3**: árbol de linajes en el tiempo, RI y DMIs por par, fitness por clase de cruza.
 
 ## Comandos útiles
 
